@@ -1,7 +1,10 @@
+#!/usr/bin/python2.7
 import os, sys
 sys.path.append(os.getcwd())
 
 import time
+import datetime
+import code
 
 import numpy as np
 import tensorflow as tf
@@ -19,7 +22,7 @@ import tflib.plot
 # Download CIFAR-10 (Python version) at
 # https://www.cs.toronto.edu/~kriz/cifar.html and fill in the path to the
 # extracted files here!
-DATA_DIR = ''
+DATA_DIR = '/mnt/vlad/jsupanci/data/cifar10/cifar-10-batches-py'
 if len(DATA_DIR) == 0:
     raise Exception('Please specify path to data directory in gan_cifar.py!')
 
@@ -154,8 +157,10 @@ fixed_noise_samples_128 = Generator(128, noise=fixed_noise_128)
 def generate_image(frame, true_dist):
     samples = session.run(fixed_noise_samples_128)
     samples = ((samples+1.)*(255./2)).astype('int32')
-    lib.save_images.save_images(samples.reshape((128, 3, 32, 32)), 'samples_{}.jpg'.format(frame))
-
+    samples = samples.reshape((128, 3, 32, 32))
+    lib.save_images.save_images(samples, 'samples_{}.jpg'.format(frame))
+    return samples
+    
 # For calculating inception score
 samples_100 = Generator(100)
 def get_inception_score():
@@ -174,16 +179,73 @@ def inf_train_gen():
         for images in train_gen():
             yield images
 
+class GAN_TrainingSummaries():
+    def __init__(self, sess):
+        # save sess
+        self.sess = sess
+        
+        # Craete the tensorboard summaries
+        self.loss_g = tf.placeholder(tf.float32);
+        self.loss_d = tf.placeholder(tf.float32);
+        summary_loss_g = tf.summary.scalar('loss_g', self.loss_g)
+        summary_loss_d = tf.summary.scalar('loss_d', self.loss_d)
+        self.loss_summary = tf.summary.merge([
+            summary_loss_g, summary_loss_d])
+
+        # for the image
+        self.image = tf.placeholder(tf.uint8);
+        self.im_summary = tf.summary.image('samples', self.image)    
+
+        # summarization
+        datestring = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+        self.logdir = './logs/' + datestring + '/'
+        tf.gfile.MakeDirs(self.logdir)
+        self.summary_writer = tf.summary.FileWriter(self.logdir, self.sess.graph)
+        
+    def write_loss(self, step, loss_g, loss_d):
+        print("Tensorboard: Saving Loss " + str(step))
+        
+        feed_dict = {self.loss_g : loss_g, self.loss_d : loss_d}
+        loss_summary = self.sess.run(self.loss_summary, feed_dict)
+        self.summary_writer.add_summary(loss_summary, step)
+
+    def write_image(self, step, samples):
+        print("Tensorboard: Saving Image")
+
+        data_shape = samples.shape
+        image_of_samples = samples        
+        image_of_samples = image_of_samples.reshape(8,16,data_shape[1],data_shape[2], data_shape[3])
+        image_of_samples = image_of_samples.transpose(0,3,1,4,2)
+        image_of_samples = image_of_samples.reshape(
+          8*data_shape[2],
+          16*data_shape[3],
+          data_shape[1])
+        image_of_samples = np.uint8(255*image_of_samples)
+        #plt.imsave(fname, image_of_samples)#,cmap='gray')
+        if data_shape[1] == 1:
+          image_of_samples3d = np.rollaxis(np.tile(image_of_samples,(3,1,1,1)),0,4)
+        else:
+          image_of_samples3d = image_of_samples.reshape((1,) + image_of_samples.shape)        
+        
+        # send the visualization to tensorboard
+        feed_dict = {self.image : image_of_samples3d}
+        im_summary = self.sess.run(self.im_summary, feed_dict=feed_dict)
+        self.summary_writer.add_summary(im_summary, step)
+        
 # Train loop
 with tf.Session() as session:
     session.run(tf.initialize_all_variables())
     gen = inf_train_gen()
 
+    summary = GAN_TrainingSummaries(session)
+    _gen_cost = np.inf;
+    _disc_cost = np.inf;
+    
     for iteration in xrange(ITERS):
         start_time = time.time()
         # Train generator
         if iteration > 0:
-            _ = session.run(gen_train_op)
+            _gen_cost, _ = session.run([gen_cost, gen_train_op])
         # Train critic
         if MODE == 'dcgan':
             disc_iters = 1
@@ -197,20 +259,22 @@ with tf.Session() as session:
 
         lib.plot.plot('train disc cost', _disc_cost)
         lib.plot.plot('time', time.time() - start_time)
-
+        summary.write_loss(iteration, _gen_cost, _disc_cost)
+        
         # Calculate inception score every 1K iters
         if iteration % 1000 == 999:
             inception_score = get_inception_score()
             lib.plot.plot('inception score', inception_score[0])
 
         # Calculate dev loss and generate samples every 100 iters
-        if iteration % 100 == 99:
+        if iteration == 1 or iteration % 100 == 99:
             dev_disc_costs = []
             for images in dev_gen():
                 _dev_disc_cost = session.run(disc_cost, feed_dict={real_data_int: images}) 
                 dev_disc_costs.append(_dev_disc_cost)
             lib.plot.plot('dev disc cost', np.mean(dev_disc_costs))
-            generate_image(iteration, _data)
+            images = generate_image(iteration, _data)
+            summary.write_image(iteration, images)
 
         # Save logs every 100 iters
         if (iteration < 5) or (iteration % 100 == 99):
