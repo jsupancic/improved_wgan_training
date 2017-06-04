@@ -267,7 +267,7 @@ with tf.Session() as session:
         if iteration % 1000 == 999:
             inception_score = get_inception_score()
             lib.plot.plot('inception score', inception_score[0])
-            saver.save(sess, 'gan_cifar', global_step = iteration)
+            saver.save(session, 'gan_cifar', global_step = iteration)
             
         # Calculate dev loss and generate samples every 100 iters
         if iteration == 1 or iteration % 100 == 99:
