@@ -220,11 +220,11 @@ class GAN_TrainingSummaries():
           8*data_shape[2],
           16*data_shape[3],
           data_shape[1])
-        image_of_samples = np.uint8(255*image_of_samples)
+        image_of_samples = 255 - np.uint8(255*image_of_samples)
         #plt.imsave(fname, image_of_samples)#,cmap='gray')
         if data_shape[1] == 1:
           image_of_samples3d = np.rollaxis(np.tile(image_of_samples,(3,1,1,1)),0,4)
-          image_of_samples3d = np.flip(image_of_samples3d, 2)
+          #image_of_samples3d = np.flip(image_of_samples3d, 2)
         else:
           image_of_samples3d = image_of_samples.reshape((1,) + image_of_samples.shape)        
         
