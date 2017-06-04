@@ -6,3 +6,8 @@ push
 *.jpg
 *.png
 logs
+
+checkpoint
+*data*
+*index
+*meta
