@@ -158,7 +158,7 @@ def generate_image(frame, true_dist):
     samples = session.run(fixed_noise_samples_128)
     samples = ((samples+1.)*(255./2)).astype('int32')
     samples = samples.reshape((128, 3, 32, 32))
-    lib.save_images.save_images(samples, 'samples_{}.jpg'.format(frame))
+    #lib.save_images.save_images(samples, 'samples_{}.jpg'.format(frame))
     return samples
     
 # For calculating inception score
@@ -224,6 +224,7 @@ class GAN_TrainingSummaries():
         #plt.imsave(fname, image_of_samples)#,cmap='gray')
         if data_shape[1] == 1:
           image_of_samples3d = np.rollaxis(np.tile(image_of_samples,(3,1,1,1)),0,4)
+          image_of_samples3d = np.flip(image_of_samples3d, 2)
         else:
           image_of_samples3d = image_of_samples.reshape((1,) + image_of_samples.shape)        
         
@@ -234,6 +235,7 @@ class GAN_TrainingSummaries():
         
 # Train loop
 with tf.Session() as session:
+    saver = tf.train.Saver(keep_checkpoint_every_n_hours=2)
     session.run(tf.initialize_all_variables())
     gen = inf_train_gen()
 
@@ -265,7 +267,8 @@ with tf.Session() as session:
         if iteration % 1000 == 999:
             inception_score = get_inception_score()
             lib.plot.plot('inception score', inception_score[0])
-
+            saver.save(sess, 'gan_cifar', global_step = iteration)
+            
         # Calculate dev loss and generate samples every 100 iters
         if iteration == 1 or iteration % 100 == 99:
             dev_disc_costs = []
